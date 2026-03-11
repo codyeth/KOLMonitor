@@ -22,12 +22,20 @@ CONFIG = {
 }
 
 # ─── Telegram Bot ───────────────────────────────────────────────────────────
-# Token và Admin ID được load từ secrets.py (không commit lên git)
-try:
-    from secrets import TELEGRAM_TOKEN, TELEGRAM_ADMIN_ID
-except ImportError:
-    TELEGRAM_TOKEN = ""
-    TELEGRAM_ADMIN_ID = 0
+import os
+
+# Đọc từ biến môi trường (Railway) hoặc fallback sang secrets.py (local)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_ADMIN_ID = int(os.getenv("TELEGRAM_ADMIN_ID", "0"))
+
+if not TELEGRAM_TOKEN:
+    try:
+        import secrets as _secrets
+        TELEGRAM_TOKEN = getattr(_secrets, "TELEGRAM_TOKEN", "")
+        if TELEGRAM_ADMIN_ID == 0:
+            TELEGRAM_ADMIN_ID = getattr(_secrets, "TELEGRAM_ADMIN_ID", 0)
+    except ImportError:
+        TELEGRAM_TOKEN = ""
 
 # Danh sách user ID được phép dùng bot (thêm bằng /adduser hoặc sửa trực tiếp)
 TELEGRAM_ALLOWED_IDS: list[int] = []

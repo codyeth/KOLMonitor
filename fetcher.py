@@ -4,6 +4,7 @@ fetcher.py — Handles all Twitter/X data fetching via twikit
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 COOKIES_FILE = Path(__file__).parent / "data" / "cookies.json"
@@ -14,24 +15,28 @@ class TwitterFetcher:
         self.client = None
 
     async def login(self):
-        """Load session from cookies file. Does NOT login with password."""
+        """Load session from cookies file or TWITTER_COOKIES env var."""
         from twikit import Client
 
-        if not COOKIES_FILE.exists():
-            raise FileNotFoundError(
-                "❌ Không tìm thấy data/cookies.json\n\n"
-                "Cách lấy cookies:\n"
-                "  1. Đăng nhập x.com thủ công trên Chrome/Firefox\n"
-                "  2. Cài extension 'Cookie-Editor'\n"
-                "  3. Vào x.com → mở Cookie-Editor → Export (JSON)\n"
-                "  4. Lưu file vào: data/cookies.json\n"
-                "  5. Chạy lại lệnh này"
-            )
+        cookies_json = os.getenv("TWITTER_COOKIES")
+
+        if not cookies_json:
+            if not COOKIES_FILE.exists():
+                raise FileNotFoundError(
+                    "❌ Không tìm thấy data/cookies.json\n\n"
+                    "Cách lấy cookies:\n"
+                    "  1. Đăng nhập x.com thủ công trên Chrome/Firefox\n"
+                    "  2. Cài extension 'Cookie-Editor'\n"
+                    "  3. Vào x.com → mở Cookie-Editor → Export (JSON)\n"
+                    "  4. Lưu file vào: data/cookies.json\n"
+                    "  5. Chạy lại lệnh này"
+                )
+            cookies_json = COOKIES_FILE.read_text()
 
         self.client = Client("en-US")
 
         # Cookie-Editor exports a list of objects — convert to {name: value} dict
-        raw = json.loads(COOKIES_FILE.read_text())
+        raw = json.loads(cookies_json)
         if isinstance(raw, list):
             cookies = {c["name"]: c["value"] for c in raw}
         else:

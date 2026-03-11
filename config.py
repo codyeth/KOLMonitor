@@ -30,12 +30,25 @@ TELEGRAM_ADMIN_ID = int(os.getenv("TELEGRAM_ADMIN_ID", "0"))
 
 if not TELEGRAM_TOKEN:
     try:
-        import secrets as _secrets
-        TELEGRAM_TOKEN = getattr(_secrets, "TELEGRAM_TOKEN", "")
+        import importlib.util, pathlib
+        _spec = importlib.util.spec_from_file_location(
+            "_local_secrets",
+            pathlib.Path(__file__).parent / "secrets.py",
+        )
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        TELEGRAM_TOKEN = getattr(_mod, "TELEGRAM_TOKEN", "")
         if TELEGRAM_ADMIN_ID == 0:
-            TELEGRAM_ADMIN_ID = getattr(_secrets, "TELEGRAM_ADMIN_ID", 0)
-    except ImportError:
+            TELEGRAM_ADMIN_ID = getattr(_mod, "TELEGRAM_ADMIN_ID", 0)
+    except (FileNotFoundError, AttributeError, Exception):
         TELEGRAM_TOKEN = ""
+
+if not TELEGRAM_TOKEN:
+    raise RuntimeError(
+        "TELEGRAM_TOKEN chưa được set. "
+        "Trên Railway: thêm biến môi trường TELEGRAM_TOKEN. "
+        "Chạy local: tạo file secrets.py với TELEGRAM_TOKEN = '...' "
+    )
 
 # Danh sách user ID được phép dùng bot (thêm bằng /adduser hoặc sửa trực tiếp)
 TELEGRAM_ALLOWED_IDS: list[int] = []

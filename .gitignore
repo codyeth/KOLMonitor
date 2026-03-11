@@ -1,0 +1,8 @@
+data/cookies.json
+data/seen_tweets.json
+data/allowed_users.json
+data/output/
+__pycache__/
+*.pyc
+.env
+secrets.py

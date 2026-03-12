@@ -278,7 +278,7 @@ async def cmd_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<code>https://t.me/channel1\n"
             "https://t.me/group2\n"
             "@channelname</code>\n\n"
-            "⚙️ Lọc: 24h gần nhất · Từ khóa dự án\n"
+            "⚙️ Lọc: 72h gần nhất · Từ khóa dự án\n"
             "📤 Kết quả: file CSV",
             parse_mode="HTML",
             reply_markup=_monitor_keyboard(),
@@ -334,7 +334,7 @@ async def cmd_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "━━━━━━━━━━━━━━━━━━━━\n"
             "💬 <b>MONITOR TG</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "Quét channel/group Telegram tìm bài đăng có từ khóa dự án trong 24h qua.\n\n"
+            "Quét channel/group Telegram tìm bài đăng có từ khóa dự án trong 72h qua.\n\n"
             "Lệnh: <code>/monitor_tg</code>\n"
             "Gửi trực tiếp: <code>https://t.me/channel</code>\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
@@ -599,7 +599,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages, errors = await fetch_tg_channels(
                 tg_usernames,
                 keywords=CONFIG["keywords"],
-                hours=24,
+                hours=72,
             )
         except RuntimeError as e:
             await status_msg.edit_text(
@@ -620,7 +620,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             err_note = ("\n\n⚠️ Lỗi channel:\n" + "\n".join(f"• {e}" for e in errors[:3])) if errors else ""
             await status_msg.edit_text(
                 f"✅ Đã quét {len(tg_usernames)} channel\n\n"
-                f"ℹ️ Không có tin nhắn nào khớp từ khoá trong 24 giờ gần nhất.{err_note}",
+                f"ℹ️ Không có tin nhắn nào khớp từ khoá trong 72 giờ gần nhất.{err_note}",
                 reply_markup=_main_keyboard(),
             )
             return

@@ -115,7 +115,7 @@ class TwitterFetcher:
         # ── Trang đầu ────────────────────────────────────────────────────────
         try:
             page = await self._with_rate_limit_retry(
-                lambda: self.client.search_tweet(query, "Latest", count=20),
+                lambda: self.client.search_tweet(query, "Latest", count=40),
                 f"search:{query}",
             )
         except Exception as e:

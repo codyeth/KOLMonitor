@@ -59,4 +59,4 @@ TELEGRAM_ALLOWED_IDS: list[int] = [
 # ─── Scan Settings ───────────────────────────────────────────────────────────
 SCAN_MIN_VIEWS = int(os.getenv("SCAN_MIN_VIEWS", "1000"))
 SCAN_HOURS = int(os.getenv("SCAN_HOURS", "24"))
-SCAN_MAX_RESULTS = int(os.getenv("SCAN_MAX_RESULTS", "50"))
+SCAN_MAX_RESULTS = int(os.getenv("SCAN_MAX_RESULTS", "500"))

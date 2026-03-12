@@ -33,9 +33,10 @@ import openpyxl
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
     ContextTypes,
@@ -146,18 +147,33 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_allowed(user_id):
         await update.message.reply_text(
-            f"⛔ Bạn chưa được cấp quyền.\n\nID của bạn: `{user_id}`\nGửi ID này cho admin để được thêm vào.",
-            parse_mode="Markdown",
+            f"⛔ Bạn chưa được cấp quyền.\n\n"
+            f"🪪 ID của bạn: <code>{user_id}</code>\n\n"
+            f"Gửi ID này cho admin để được thêm vào.",
+            parse_mode="HTML",
         )
         return
 
+    keyboard = [
+        [
+            InlineKeyboardButton("📋 Monitor", callback_data="help_monitor"),
+            InlineKeyboardButton("🔍 Scan", callback_data="help_scan"),
+            InlineKeyboardButton("❓ Help", callback_data="help_all"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
     await update.message.reply_text(
-        "👋 *KOL Monitor Bot*\n\n"
-        "• /monitor — Kiểm tra KOL trong danh sách, trả CSV\n"
-        "• /scan — Tìm KOL mới đang đăng về dự án (24h, view > 1k)\n\n"
-        "Hoặc gửi danh sách username/link để kiểm tra ngay.\n\n"
-        "Dùng /help để xem chi tiết.",
-        parse_mode="Markdown",
+        "👋 <b>Chào mừng đến với KOL Monitor Bot!</b>\n\n"
+        "Bot giúp bạn theo dõi các KOL trên X/Twitter đang đăng về dự án.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📋 <b>/monitor</b> — Kiểm tra KOL trong danh sách\n"
+        "🔍 <b>/scan</b> — Tìm KOL mới đăng về dự án\n"
+        "❓ <b>/help</b> — Hướng dẫn chi tiết\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "👇 Nhấn để xem hướng dẫn từng tính năng:",
+        parse_mode="HTML",
+        reply_markup=reply_markup,
     )
 
 
@@ -166,22 +182,88 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "📖 *Hướng dẫn sử dụng*\n\n"
-        "*/monitor*\n"
-        "Kiểm tra toàn bộ KOL trong danh sách `data/kols.json`, "
-        "lọc bài có từ khoá trong 72h gần nhất → trả file CSV.\n\n"
-        "*/scan \\[keyword\\]*\n"
-        "Tìm kiếm X/Twitter 24h gần nhất, lọc bài view > 1,000. "
-        "Mặc định dùng keywords trong config. "
-        "Ví dụ: `/scan NEXI Nexira`\n\n"
-        "*Gửi username ad\\-hoc*\n"
-        "Gửi danh sách link/username để kiểm tra ngay:\n"
-        "```\nhttps://x.com/user1\n@user2\nuser3\n```\n\n"
-        "⏱ /monitor mất 5\\-10 phút cho 30 KOL \\(giới hạn Twitter API\\)\n\n"
-        "*Lệnh admin:*\n"
-        "/adduser /removeuser /listusers /myid",
-        parse_mode="MarkdownV2",
+        "❓ <b>Hướng dẫn sử dụng KOL Monitor Bot</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📋 <b>MONITOR — Theo dõi KOL có sẵn</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Dùng để kiểm tra bài mới từ danh sách KOL bạn cung cấp.\n\n"
+        "📌 <b>Cách dùng:</b>\n"
+        "Gõ <code>/monitor</code> kèm danh sách username:\n\n"
+        "<code>/monitor\n"
+        "https://x.com/user1\n"
+        "@user2\n"
+        "user3</code>\n\n"
+        "⚙️ <b>Điều kiện lọc:</b>\n"
+        "• Bài trong 72h gần nhất\n"
+        "• Chứa từ khóa dự án (NEXI, Nexira, DAEP...)\n"
+        "• Kết quả xuất ra file CSV\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔍 <b>SCAN — Tìm KOL mới trên X</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Dùng để tìm các tài khoản đang đăng về dự án mà chưa có trong danh sách.\n\n"
+        "📌 <b>Cách dùng:</b>\n"
+        "• <code>/scan</code> — Dùng từ khóa mặc định\n"
+        "• <code>/scan NEXI</code> — Scan từ khóa tùy chọn\n"
+        "• <code>/scan NEXI Nexira DAEP</code> — Nhiều từ khóa\n\n"
+        "⚙️ <b>Điều kiện lọc:</b>\n"
+        "• Bài trong 24h gần nhất\n"
+        "• View trên 1,000\n"
+        "• Kết quả gửi message + file Excel\n"
+        "• Tự động chạy lúc 9:00 sáng mỗi ngày\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🛠 <b>Lệnh khác</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "• <code>/myid</code> — Xem Telegram ID của bạn\n"
+        "• <code>/adduser ID</code> — Thêm user (admin)\n"
+        "• <code>/removeuser ID</code> — Xóa user (admin)\n"
+        "• <code>/listusers</code> — Danh sách user (admin)\n\n"
+        "💡 <b>Gửi link trực tiếp:</b>\n"
+        "Bạn cũng có thể gửi danh sách username vào chat mà không cần gõ lệnh:\n"
+        "<code>https://x.com/user1\n@user2\nuser3</code>",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
     )
+
+
+async def cmd_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Xử lý khi user nhấn button inline."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "help_monitor":
+        await query.message.reply_text(
+            "📋 <b>MONITOR — Theo dõi KOL có sẵn</b>\n\n"
+            "Kiểm tra bài mới từ danh sách KOL bạn cung cấp.\n\n"
+            "📌 <b>Cách dùng:</b>\n"
+            "Gõ <code>/monitor</code> kèm danh sách:\n\n"
+            "<code>/monitor\n"
+            "https://x.com/user1\n"
+            "@user2\n"
+            "user3</code>\n\n"
+            "⚙️ <b>Điều kiện lọc:</b>\n"
+            "• Bài trong 72h gần nhất\n"
+            "• Chứa từ khóa dự án\n"
+            "• Xuất file CSV",
+            parse_mode="HTML",
+        )
+    elif query.data == "help_scan":
+        await query.message.reply_text(
+            "🔍 <b>SCAN — Tìm KOL mới trên X</b>\n\n"
+            "Tìm tài khoản đang đăng về dự án trong 24h gần nhất.\n\n"
+            "📌 <b>Cách dùng:</b>\n"
+            "• <code>/scan</code> — Từ khóa mặc định\n"
+            "• <code>/scan NEXI</code> — Từ khóa tùy chọn\n"
+            "• <code>/scan NEXI Nexira DAEP</code> — Nhiều từ khóa\n\n"
+            "⚙️ <b>Điều kiện lọc:</b>\n"
+            "• View trên 1,000\n"
+            "• Gửi message + file Excel\n"
+            "• Tự động lúc 9:00 sáng mỗi ngày",
+            parse_mode="HTML",
+        )
+    elif query.data == "help_all":
+        await query.message.reply_text(
+            "Dùng lệnh /help để xem hướng dẫn đầy đủ.",
+        )
 
 
 async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -606,6 +688,7 @@ def main():
     app.add_handler(CommandHandler("listusers", cmd_listusers))
     app.add_handler(CommandHandler("monitor", cmd_monitor))
     app.add_handler(CommandHandler("scan", cmd_scan))
+    app.add_handler(CallbackQueryHandler(cmd_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Bot đang chạy...")

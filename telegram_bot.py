@@ -33,7 +33,7 @@ import openpyxl
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import BotCommand, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -665,6 +665,12 @@ async def auto_scan_job(bot):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 async def _post_init(application: Application) -> None:
+    await application.bot.set_my_commands([
+        BotCommand("monitor", "Kiểm tra KOL trong danh sách bạn cung cấp"),
+        BotCommand("scan", "Tìm KOL mới đang đăng về dự án (24h, view >1k)"),
+        BotCommand("help", "Hướng dẫn sử dụng"),
+    ])
+
     scheduler = AsyncIOScheduler(timezone="Asia/Ho_Chi_Minh")
     scheduler.add_job(
         auto_scan_job,

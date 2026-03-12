@@ -55,3 +55,8 @@ _allowed = os.getenv("TELEGRAM_ALLOWED_IDS", "")
 TELEGRAM_ALLOWED_IDS: list[int] = [
     int(x.strip()) for x in _allowed.split(",") if x.strip()
 ]
+
+# ─── Scan Settings ───────────────────────────────────────────────────────────
+SCAN_MIN_VIEWS = int(os.getenv("SCAN_MIN_VIEWS", "1000"))
+SCAN_HOURS = int(os.getenv("SCAN_HOURS", "24"))
+SCAN_MAX_RESULTS = int(os.getenv("SCAN_MAX_RESULTS", "50"))

@@ -8,19 +8,30 @@ Commands:
   /adduser <id>  — Thêm user (admin only)
   /removeuser <id> — Xoá user (admin only)
   /listusers     — Danh sách user được phép (admin only)
+  /scan          — Quét X/Twitter theo từ khóa (24h, view > 1000)
+  /scan KW1 KW2  — Quét với từ khóa tuỳ chọn
 
 Gửi danh sách KOL (URL hoặc username, mỗi dòng 1 tài khoản):
   https://x.com/user1
   https://x.com/user2
   @user3
   user4
+
+Auto scan: chạy tự động lúc 09:00 Asia/Ho_Chi_Minh, gửi kết quả cho admin.
 """
 
 import json
 import logging
+import os
 import re
+import tempfile
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import openpyxl
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -30,7 +41,15 @@ from telegram.ext import (
     filters,
 )
 
-from config import TELEGRAM_TOKEN, TELEGRAM_ADMIN_ID, TELEGRAM_ALLOWED_IDS
+from config import (
+    CONFIG,
+    SCAN_HOURS,
+    SCAN_MAX_RESULTS,
+    SCAN_MIN_VIEWS,
+    TELEGRAM_ADMIN_ID,
+    TELEGRAM_ALLOWED_IDS,
+    TELEGRAM_TOKEN,
+)
 from monitor_core import run_monitor
 
 logging.basicConfig(
@@ -63,6 +82,19 @@ def _save_allowed_ids(ids: set[int]):
 
 
 allowed_ids: set[int] = _load_allowed_ids()
+
+# ── Twitter fetcher singleton (tái dùng session, không login lại mỗi lần) ────
+
+_fetcher = None
+
+
+async def _get_fetcher():
+    global _fetcher
+    if _fetcher is None:
+        from fetcher import TwitterFetcher
+        _fetcher = TwitterFetcher()
+        await _fetcher.login()
+    return _fetcher
 
 
 def is_allowed(user_id: int) -> bool:
@@ -276,10 +308,227 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ── Scan KOL theo từ khóa ────────────────────────────────────────────────────
+
+async def _scan_kol_tweets(keywords: list[str]) -> list[dict]:
+    """Tìm tweet 24h gần nhất chứa keyword và views >= SCAN_MIN_VIEWS."""
+    from filter import TweetFilter
+
+    since_dt = datetime.now(timezone.utc) - timedelta(hours=SCAN_HOURS)
+    tweet_filter = TweetFilter(keywords=keywords, min_views=SCAN_MIN_VIEWS, since=since_dt)
+
+    fetcher = await _get_fetcher()
+    seen_ids: set = set()
+    raw: list[dict] = []
+
+    for keyword in keywords:
+        try:
+            tweets = await fetcher.search_tweets(keyword, limit=SCAN_MAX_RESULTS)
+            for t in tweets:
+                if t["id"] not in seen_ids:
+                    seen_ids.add(t["id"])
+                    raw.append(t)
+        except Exception as e:
+            logger.error(f"Scan keyword '{keyword}' lỗi: {e}")
+            global _fetcher
+            _fetcher = None  # reset để login lại lần sau nếu lỗi auth
+
+    return tweet_filter.filter(raw)
+
+
+def _create_scan_excel(tweets: list[dict], keywords: list[str]) -> str:
+    """Tạo file Excel từ danh sách tweet, trả về đường dẫn file tạm."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Kết quả Scan"
+
+    headers = [
+        "STT", "Thời gian đăng", "@Username", "Tên KOL", "Followers",
+        "Lượt xem", "Likes", "Retweets", "Replies", "Nội dung tweet",
+        "Link bài viết", "Từ khóa khớp",
+    ]
+    header_fill = PatternFill(start_color="1DA1F2", end_color="1DA1F2", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    alt_fill = PatternFill(start_color="F0F8FF", end_color="F0F8FF", fill_type="solid")
+    num_fmt = "#,##0"
+
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for row_idx, tweet in enumerate(tweets, 2):
+        try:
+            dt = datetime.strptime(tweet["created_at"], "%a %b %d %H:%M:%S %z %Y")
+            dt_str = dt.strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            dt_str = tweet.get("created_at", "")
+
+        row_data = [
+            row_idx - 1,
+            dt_str,
+            f"@{tweet.get('username', '')}",
+            tweet.get("name", ""),
+            tweet.get("followers", 0),
+            tweet.get("views", 0),
+            tweet.get("likes", 0),
+            tweet.get("retweets", 0),
+            tweet.get("replies", 0),
+            (tweet.get("text") or "")[:150],
+            tweet.get("url", ""),
+            tweet.get("matched_keywords", ""),
+        ]
+
+        use_alt = (row_idx % 2 == 0)
+        for col, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col, value=value)
+            if use_alt:
+                cell.fill = alt_fill
+            if col in (5, 6, 7, 8, 9):
+                cell.number_format = num_fmt
+
+        url = tweet.get("url", "")
+        if url:
+            link_cell = ws.cell(row=row_idx, column=11)
+            link_cell.hyperlink = url
+            link_cell.font = Font(color="0563C1", underline="single",
+                                  italic=(use_alt))
+
+    ws.freeze_panes = "A2"
+
+    for col in ws.columns:
+        col_letter = get_column_letter(col[0].column)
+        max_len = max((len(str(cell.value)) for cell in col if cell.value), default=10)
+        ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    kw_slug = "_".join(k.replace("$", "") for k in keywords[:2])
+    path = os.path.join(tempfile.gettempdir(), f"scan_{kw_slug}_{today}.xlsx")
+    wb.save(path)
+    return path
+
+
+def _format_scan_message(tweets: list[dict], keywords: list[str]) -> str:
+    """Tạo message HTML tóm tắt kết quả scan."""
+    kw_str = ", ".join(keywords)
+    if not tweets:
+        return (
+            "🔍 <b>Kết quả Scan KOL</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"❌ Không tìm thấy bài viết nào khớp tiêu chí trong {SCAN_HOURS}h qua.\n"
+            f"Keywords: {kw_str}"
+        )
+
+    lines = [
+        "🔍 <b>Kết quả Scan KOL</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"📅 {SCAN_HOURS}h gần nhất",
+        f"🔑 Keywords: {kw_str}",
+        f"👁 Min views: {SCAN_MIN_VIEWS:,}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"✅ Tìm thấy {len(tweets)} bài viết",
+        "",
+    ]
+    for i, t in enumerate(tweets[:10], 1):
+        excerpt = (t.get("text") or "")[:80].replace("<", "&lt;").replace(">", "&gt;")
+        lines += [
+            f"{i}. @{t.get('username', '')}",
+            f"   👁 {t.get('views', 0):,} views · ❤️ {t.get('likes', 0):,} · 🔁 {t.get('retweets', 0):,}",
+            f'   📝 "{excerpt}..."',
+            f"   🔗 {t.get('url', '')}",
+            "",
+        ]
+    if len(tweets) > 10:
+        lines.append(f"📎 File Excel đính kèm gồm tất cả {len(tweets)} bài")
+    return "\n".join(lines)
+
+
+async def _send_scan_results(send_message_fn, send_document_fn, tweets: list[dict], keywords: list[str]):
+    """Gửi message tóm tắt và file Excel (dùng chung cho /scan và auto scan)."""
+    msg = _format_scan_message(tweets, keywords)
+    await send_message_fn(msg)
+
+    if not tweets:
+        return
+
+    try:
+        excel_path = _create_scan_excel(tweets, keywords)
+        kw_str = ", ".join(keywords)
+        with open(excel_path, "rb") as f:
+            await send_document_fn(f, os.path.basename(excel_path),
+                                   f"📊 {len(tweets)} bài | Keywords: {kw_str}")
+        os.remove(excel_path)
+    except Exception as e:
+        logger.error(f"Tạo Excel scan thất bại: {e}")
+
+
+async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update.effective_user.id):
+        return
+
+    keywords = list(context.args) if context.args else CONFIG["keywords"]
+    status_msg = await update.message.reply_text("⏳ Đang quét X/Twitter, vui lòng chờ...")
+
+    try:
+        tweets = await _scan_kol_tweets(keywords)
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Lỗi khi quét:\n<code>{e}</code>", parse_mode="HTML")
+        return
+
+    await status_msg.delete()
+
+    async def send_msg(text):
+        await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
+
+    async def send_doc(f, filename, caption):
+        await update.message.reply_document(document=f, filename=filename, caption=caption)
+
+    await _send_scan_results(send_msg, send_doc, tweets, keywords)
+
+
+async def auto_scan_job(bot):
+    """Chạy tự động mỗi 24h, gửi kết quả vào chat của TELEGRAM_ADMIN_ID."""
+    if not TELEGRAM_ADMIN_ID:
+        return
+
+    keywords = CONFIG["keywords"]
+    try:
+        tweets = await _scan_kol_tweets(keywords)
+    except Exception as e:
+        logger.error(f"Auto scan thất bại: {e}")
+        await bot.send_message(TELEGRAM_ADMIN_ID,
+                               f"❌ Auto scan lỗi: <code>{e}</code>", parse_mode="HTML")
+        return
+
+    async def send_msg(text):
+        await bot.send_message(TELEGRAM_ADMIN_ID, text,
+                               parse_mode="HTML", disable_web_page_preview=True)
+
+    async def send_doc(f, filename, caption):
+        await bot.send_document(TELEGRAM_ADMIN_ID, document=f,
+                                filename=filename, caption=caption)
+
+    await _send_scan_results(send_msg, send_doc, tweets, keywords)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+async def _post_init(application: Application) -> None:
+    scheduler = AsyncIOScheduler(timezone="Asia/Ho_Chi_Minh")
+    scheduler.add_job(
+        auto_scan_job,
+        trigger="cron",
+        hour=9,
+        minute=0,
+        args=[application.bot],
+    )
+    scheduler.start()
+    logger.info("Scheduler đã khởi động (auto scan lúc 09:00 Asia/Ho_Chi_Minh)")
+
+
 def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_TOKEN).post_init(_post_init).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
@@ -287,6 +536,7 @@ def main():
     app.add_handler(CommandHandler("adduser", cmd_adduser))
     app.add_handler(CommandHandler("removeuser", cmd_removeuser))
     app.add_handler(CommandHandler("listusers", cmd_listusers))
+    app.add_handler(CommandHandler("scan", cmd_scan))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Bot đang chạy...")

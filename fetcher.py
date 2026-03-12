@@ -97,3 +97,68 @@ class TwitterFetcher:
             results = await self.client.search_tweet(query, "Latest", count=limit)
             return [self._tweet_to_dict(t) for t in results]
         return await self._with_rate_limit_retry(_fetch, f"search:{query}")
+
+    async def search_tweets_deep(
+        self,
+        query: str,
+        max_results: int = 200,
+        page_delay: float = 4.0,
+        on_page: callable = None,
+    ) -> list[dict]:
+        """
+        Paginated search — nhiều trang, delay giữa các trang để tránh X rate limit.
+        on_page(fetched, total): callback sau mỗi trang (tuỳ chọn).
+        """
+        all_tweets: list[dict] = []
+        seen_ids: set = set()
+
+        # ── Trang đầu ────────────────────────────────────────────────────────
+        try:
+            page = await self._with_rate_limit_retry(
+                lambda: self.client.search_tweet(query, "Latest", count=20),
+                f"search:{query}",
+            )
+        except Exception as e:
+            raise RuntimeError(f"search:{query}: {e}")
+
+        while page:
+            new_in_page = 0
+            for t in page:
+                d = self._tweet_to_dict(t)
+                if d["id"] not in seen_ids:
+                    seen_ids.add(d["id"])
+                    all_tweets.append(d)
+                    new_in_page += 1
+
+            if on_page:
+                try:
+                    await on_page(new_in_page, len(all_tweets))
+                except Exception:
+                    pass
+
+            if new_in_page == 0 or len(all_tweets) >= max_results:
+                break
+
+            # ── Delay giữa trang ─────────────────────────────────────────────
+            await asyncio.sleep(page_delay)
+
+            # ── Lấy trang tiếp theo ───────────────────────────────────────────
+            next_page = None
+            for attempt in range(3):
+                try:
+                    next_page = await page.next()
+                    break
+                except Exception as e:
+                    msg = str(e)
+                    if "429" in msg or "rate limit" in msg.lower():
+                        wait = 90 if attempt == 0 else 120
+                        print(f"\n   ⏳ Rate limit (trang {attempt+1}) — chờ {wait}s...", flush=True)
+                        await asyncio.sleep(wait)
+                    else:
+                        break  # lỗi khác → dừng pagination
+
+            if not next_page:
+                break
+            page = next_page
+
+        return all_tweets[:max_results]

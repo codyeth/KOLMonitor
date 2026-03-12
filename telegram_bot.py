@@ -21,6 +21,7 @@ Gửi danh sách KOL ad-hoc (URL hoặc username, mỗi dòng 1 tài khoản):
 Auto scan: chạy tự động lúc 09:00 Asia/Ho_Chi_Minh, gửi kết quả cho admin.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -460,8 +461,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── Scan KOL theo từ khóa ────────────────────────────────────────────────────
 
-async def _scan_kol_tweets(keywords: list[str]) -> list[dict]:
-    """Tìm tweet 24h gần nhất chứa keyword và views >= SCAN_MIN_VIEWS."""
+async def _scan_kol_tweets(
+    keywords: list[str],
+    progress_cb=None,
+) -> list[dict]:
+    """
+    Tìm tweet 24h gần nhất chứa keyword và views >= SCAN_MIN_VIEWS.
+    progress_cb(msg): gửi cập nhật tiến độ (tuỳ chọn).
+    """
     from filter import TweetFilter
 
     since_dt = datetime.now(timezone.utc) - timedelta(hours=SCAN_HOURS)
@@ -471,17 +478,50 @@ async def _scan_kol_tweets(keywords: list[str]) -> list[dict]:
     seen_ids: set = set()
     raw: list[dict] = []
 
-    for keyword in keywords:
+    for kw_idx, keyword in enumerate(keywords, 1):
+        if progress_cb:
+            await progress_cb(
+                f"🔍 [{kw_idx}/{len(keywords)}] Đang quét: <b>{keyword}</b>..."
+            )
         try:
-            tweets = await fetcher.search_tweets(keyword, limit=SCAN_MAX_RESULTS)
+            page_count = [0]
+
+            async def on_page(_new_count, total, _kw=keyword, _ki=kw_idx):
+                page_count[0] += 1
+                if progress_cb:
+                    await progress_cb(
+                        f"🔍 [{_ki}/{len(keywords)}] <b>{_kw}</b>\n"
+                        f"   Trang {page_count[0]} — thu thập {total} bài..."
+                    )
+
+            tweets = await fetcher.search_tweets_deep(
+                keyword,
+                max_results=SCAN_MAX_RESULTS,
+                page_delay=4.0,
+                on_page=on_page,
+            )
+            new = 0
             for t in tweets:
                 if t["id"] not in seen_ids:
                     seen_ids.add(t["id"])
                     raw.append(t)
+                    new += 1
+
+            if progress_cb:
+                await progress_cb(
+                    f"✅ [{kw_idx}/{len(keywords)}] <b>{keyword}</b> — {new} bài mới"
+                )
+
         except Exception as e:
             logger.error(f"Scan keyword '{keyword}' lỗi: {e}")
+            if progress_cb:
+                await progress_cb(f"⚠️ [{kw_idx}/{len(keywords)}] <b>{keyword}</b> lỗi: {e}")
             global _fetcher
             _fetcher = None  # reset để login lại lần sau nếu lỗi auth
+
+        # Delay giữa các keyword khác nhau
+        if kw_idx < len(keywords):
+            await asyncio.sleep(5)
 
     return tweet_filter.filter(raw)
 
@@ -618,10 +658,25 @@ async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keywords = list(context.args) if context.args else CONFIG["keywords"]
-    status_msg = await update.message.reply_text("⏳ Đang quét X/Twitter, vui lòng chờ...")
+    kw_str = ", ".join(keywords)
+    status_msg = await update.message.reply_text(
+        f"⏳ Bắt đầu quét X/Twitter...\n🔑 Keywords: <b>{kw_str}</b>\n\n"
+        f"Quá trình có thể mất vài phút.",
+        parse_mode="HTML",
+    )
+
+    last_text = [""]
+
+    async def progress_cb(msg: str):
+        if msg != last_text[0]:
+            last_text[0] = msg
+            try:
+                await status_msg.edit_text(msg, parse_mode="HTML")
+            except Exception:
+                pass
 
     try:
-        tweets = await _scan_kol_tweets(keywords)
+        tweets = await _scan_kol_tweets(keywords, progress_cb=progress_cb)
     except Exception as e:
         await status_msg.edit_text(f"❌ Lỗi khi quét:\n<code>{e}</code>", parse_mode="HTML")
         return

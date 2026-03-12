@@ -142,14 +142,24 @@ def parse_usernames(text: str) -> list[str]:
     return usernames
 
 
-# ── Helper ───────────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("📋 Monitor", callback_data="help_monitor"),
+        InlineKeyboardButton("📋 Monitor", callback_data="show_monitor_menu"),
         InlineKeyboardButton("🔍 Scan", callback_data="help_scan"),
         InlineKeyboardButton("❓ Help", callback_data="help_all"),
     ]])
+
+
+def _monitor_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🐦 Monitor X", callback_data="help_monitor_x"),
+            InlineKeyboardButton("💬 Monitor TG", callback_data="help_monitor_tg"),
+        ],
+        [InlineKeyboardButton("« Quay lại", callback_data="back_main")],
+    ])
 
 
 # ── Handlers ─────────────────────────────────────────────────────────────────
@@ -165,26 +175,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    keyboard = [
-        [
-            InlineKeyboardButton("📋 Monitor", callback_data="help_monitor"),
-            InlineKeyboardButton("🔍 Scan", callback_data="help_scan"),
-            InlineKeyboardButton("❓ Help", callback_data="help_all"),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
         "👋 <b>Chào mừng đến với KOL Monitor Bot!</b>\n\n"
-        "Bot giúp bạn theo dõi các KOL trên X/Twitter đang đăng về dự án.\n\n"
+        "Bot giúp bạn theo dõi KOL trên X/Twitter và Telegram đang đăng về dự án.\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "📋 <b>/monitor</b> — Kiểm tra KOL trong danh sách\n"
+        "📋 <b>/monitor_x</b> — Kiểm tra KOL X/Twitter\n"
+        "💬 <b>/monitor_tg</b> — Kiểm tra KOL Telegram\n"
         "🔍 <b>/scan</b> — Tìm KOL mới đăng về dự án\n"
         "❓ <b>/help</b> — Hướng dẫn chi tiết\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "👇 Nhấn để xem hướng dẫn từng tính năng:",
+        "👇 Nhấn để chọn tính năng:",
         parse_mode="HTML",
-        reply_markup=reply_markup,
+        reply_markup=_main_keyboard(),
     )
 
 
@@ -241,13 +243,19 @@ async def cmd_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == "help_monitor":
+    if query.data == "show_monitor_menu":
         await query.message.reply_text(
-            "📋 <b>MONITOR — Theo dõi KOL có sẵn</b>\n\n"
+            "📋 <b>Chọn loại Monitor:</b>",
+            parse_mode="HTML",
+            reply_markup=_monitor_keyboard(),
+        )
+
+    elif query.data == "help_monitor_x":
+        await query.message.reply_text(
+            "🐦 <b>Monitor X — Theo dõi KOL X/Twitter</b>\n\n"
             "Kiểm tra bài mới từ danh sách KOL bạn cung cấp.\n\n"
             "📌 <b>Cách dùng:</b>\n"
-            "Gõ <code>/monitor</code> kèm danh sách:\n\n"
-            "<code>/monitor\n"
+            "<code>/monitor_x\n"
             "https://x.com/user1\n"
             "@user2\n"
             "user3</code>\n\n"
@@ -256,7 +264,32 @@ async def cmd_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Chứa từ khóa dự án\n"
             "• Xuất file CSV",
             parse_mode="HTML",
+            reply_markup=_monitor_keyboard(),
         )
+
+    elif query.data == "help_monitor_tg":
+        await query.message.reply_text(
+            "💬 <b>Monitor TG — Theo dõi KOL Telegram</b>\n\n"
+            "Kiểm tra tin nhắn mới từ danh sách channel/group Telegram.\n\n"
+            "📌 <b>Cách dùng:</b>\n"
+            "<code>/monitor_tg\n"
+            "https://t.me/channel1\n"
+            "@channel2\n"
+            "channel3</code>\n\n"
+            "⚙️ <b>Điều kiện lọc:</b>\n"
+            "• Tin nhắn trong 24h gần nhất\n"
+            "• Chứa từ khóa dự án\n"
+            "• Xuất file CSV",
+            parse_mode="HTML",
+            reply_markup=_monitor_keyboard(),
+        )
+
+    elif query.data == "back_main":
+        await query.message.reply_text(
+            "👇 Chọn tính năng:",
+            reply_markup=_main_keyboard(),
+        )
+
     elif query.data == "help_scan":
         await query.message.reply_text(
             "🔍 <b>SCAN — Tìm KOL mới trên X</b>\n\n"
@@ -270,10 +303,13 @@ async def cmd_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Gửi message + file Excel\n"
             "• Tự động lúc 9:00 sáng mỗi ngày",
             parse_mode="HTML",
+            reply_markup=_main_keyboard(),
         )
+
     elif query.data == "help_all":
         await query.message.reply_text(
             "Dùng lệnh /help để xem hướng dẫn đầy đủ.",
+            reply_markup=_main_keyboard(),
         )
 
 
@@ -329,21 +365,31 @@ async def cmd_listusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hiển thị sub-menu chọn Monitor X hoặc Monitor TG."""
+    if not is_allowed(update.effective_user.id):
+        return
+    await update.message.reply_text(
+        "📋 <b>Chọn loại Monitor:</b>",
+        parse_mode="HTML",
+        reply_markup=_monitor_keyboard(),
+    )
+
+
+async def cmd_monitor_x(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update.effective_user.id):
         return
 
-    # Parse usernames từ phần text sau lệnh /monitor
     full_text = update.message.text or ""
-    # Bỏ phần "/monitor" ở đầu, giữ phần còn lại
-    body = re.sub(r"^/monitor\S*\s*", "", full_text, count=1).strip()
+    body = re.sub(r"^/monitor_x\S*\s*", "", full_text, count=1).strip()
     usernames = parse_usernames(body)
 
     if not usernames:
         await update.message.reply_text(
             "📋 *Cách dùng /monitor:*\n\n"
             "Gửi lệnh kèm danh sách KOL:\n"
-            "```\n/monitor\nhttps://x.com/user1\n@user2\nuser3\n```",
+            "```\n/monitor_x\nhttps://x.com/user1\n@user2\nuser3\n```",
             parse_mode="Markdown",
+            reply_markup=_monitor_keyboard(),
         )
         return
 
@@ -396,6 +442,57 @@ async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=f"📄 {len(kol_hits)} bài | {total_views:,} views | {len(usernames)} KOL",
         )
     await update.message.reply_text("Bạn muốn làm gì tiếp theo?", reply_markup=_main_keyboard())
+
+
+async def cmd_monitor_tg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update.effective_user.id):
+        return
+
+    full_text = update.message.text or ""
+    body = re.sub(r"^/monitor_tg\S*\s*", "", full_text, count=1).strip()
+
+    # Parse Telegram channel usernames (t.me/xxx, @xxx, hoặc username thuần)
+    tg_usernames = []
+    seen = set()
+    for line in body.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = re.search(r"t\.me/([A-Za-z0-9_]{3,})", line)
+        if m:
+            uname = m.group(1)
+        elif line.startswith("@"):
+            uname = line.lstrip("@")
+        elif re.fullmatch(r"[A-Za-z0-9_]{3,}", line):
+            uname = line
+        else:
+            continue
+        low = uname.lower()
+        if low not in seen:
+            seen.add(low)
+            tg_usernames.append(uname)
+
+    if not tg_usernames:
+        await update.message.reply_text(
+            "💬 <b>Cách dùng /monitor_tg:</b>\n\n"
+            "<code>/monitor_tg\n"
+            "https://t.me/channel1\n"
+            "@channel2\n"
+            "channel3</code>",
+            parse_mode="HTML",
+            reply_markup=_monitor_keyboard(),
+        )
+        return
+
+    await update.message.reply_text(
+        "💬 <b>Monitor TG</b>\n\n"
+        f"Tính năng đang phát triển.\n"
+        f"Các channel được ghi nhận:\n"
+        + "\n".join(f"• @{u}" for u in tg_usernames)
+        + "\n\n<i>Vui lòng theo dõi cập nhật sau.</i>",
+        parse_mode="HTML",
+        reply_markup=_main_keyboard(),
+    )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -736,7 +833,8 @@ async def auto_scan_job(bot):
 
 async def _post_init(application: Application) -> None:
     await application.bot.set_my_commands([
-        BotCommand("monitor", "Kiểm tra KOL trong danh sách bạn cung cấp"),
+        BotCommand("monitor_x", "Kiểm tra KOL X/Twitter theo danh sách"),
+        BotCommand("monitor_tg", "Kiểm tra KOL Telegram theo danh sách"),
         BotCommand("scan", "Tìm KOL mới đang đăng về dự án (24h, view >1k)"),
         BotCommand("help", "Hướng dẫn sử dụng"),
     ])
@@ -771,6 +869,8 @@ def main():
     app.add_handler(CommandHandler("removeuser", cmd_removeuser))
     app.add_handler(CommandHandler("listusers", cmd_listusers))
     app.add_handler(CommandHandler("monitor", cmd_monitor))
+    app.add_handler(CommandHandler("monitor_x", cmd_monitor_x))
+    app.add_handler(CommandHandler("monitor_tg", cmd_monitor_tg))
     app.add_handler(CommandHandler("scan", cmd_scan))
     app.add_handler(CallbackQueryHandler(cmd_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

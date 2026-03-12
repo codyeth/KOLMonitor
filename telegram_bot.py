@@ -235,33 +235,28 @@ async def cmd_listusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-KOLS_FILE = Path(__file__).parent / "data" / "kols.json"
-
-
 async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update.effective_user.id):
         return
 
-    if not KOLS_FILE.exists():
+    # Parse usernames từ phần text sau lệnh /monitor
+    full_text = update.message.text or ""
+    # Bỏ phần "/monitor" ở đầu, giữ phần còn lại
+    body = re.sub(r"^/monitor\S*\s*", "", full_text, count=1).strip()
+    usernames = parse_usernames(body)
+
+    if not usernames:
         await update.message.reply_text(
-            "❌ Chưa có danh sách KOL.\n\nTạo file `data/kols.json` với danh sách KOL cần theo dõi.",
+            "📋 *Cách dùng /monitor:*\n\n"
+            "Gửi lệnh kèm danh sách KOL:\n"
+            "```\n/monitor\nhttps://x.com/user1\n@user2\nuser3\n```",
             parse_mode="Markdown",
         )
         return
 
-    try:
-        kols = json.loads(KOLS_FILE.read_text(encoding="utf-8"))
-    except Exception as e:
-        await update.message.reply_text(f"❌ Không đọc được kols.json:\n`{e}`", parse_mode="Markdown")
-        return
-
-    usernames = [k["username"] for k in kols if k.get("username")]
-    if not usernames:
-        await update.message.reply_text("❌ Danh sách KOL trống.")
-        return
-
     status_msg = await update.message.reply_text(
-        f"⏳ Bắt đầu kiểm tra {len(usernames)} KOL từ danh sách..."
+        f"⏳ Bắt đầu kiểm tra {len(usernames)} KOL...\n\n"
+        + "\n".join(f"• @{u}" for u in usernames),
     )
 
     progress_lines: list[str] = []

@@ -8,10 +8,11 @@ Commands:
   /adduser <id>  — Thêm user (admin only)
   /removeuser <id> — Xoá user (admin only)
   /listusers     — Danh sách user được phép (admin only)
-  /scan          — Quét X/Twitter theo từ khóa (24h, view > 1000)
+  /monitor       — Kiểm tra bài mới từ KOL đã có trong data/kols.json
+  /scan          — Quét X tìm KOL mới đang đăng về dự án (24h, view > 1k)
   /scan KW1 KW2  — Quét với từ khóa tuỳ chọn
 
-Gửi danh sách KOL (URL hoặc username, mỗi dòng 1 tài khoản):
+Gửi danh sách KOL ad-hoc (URL hoặc username, mỗi dòng 1 tài khoản):
   https://x.com/user1
   https://x.com/user2
   @user3
@@ -152,10 +153,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "👋 *KOL Monitor Bot*\n\n"
-        "Gửi danh sách tài khoản Twitter/X (mỗi dòng 1 link hoặc username), "
-        "bot sẽ kiểm tra và trả về file CSV chứa các bài viết có từ khoá "
-        "*NEXI / Nexira / DAEP / $NEXI* trong 72 giờ gần nhất.\n\n"
-        "Dùng /help để xem hướng dẫn chi tiết.",
+        "• /monitor — Kiểm tra KOL trong danh sách, trả CSV\n"
+        "• /scan — Tìm KOL mới đang đăng về dự án (24h, view > 1k)\n\n"
+        "Hoặc gửi danh sách username/link để kiểm tra ngay.\n\n"
+        "Dùng /help để xem chi tiết.",
         parse_mode="Markdown",
     )
 
@@ -166,21 +167,20 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "📖 *Hướng dẫn sử dụng*\n\n"
-        "Gửi danh sách KOL theo định dạng bất kỳ:\n"
-        "```\n"
-        "https://x.com/user1\n"
-        "https://x.com/user2\n"
-        "@user3\n"
-        "user4\n"
-        "```\n\n"
-        "Bot sẽ:\n"
-        "1. Kiểm tra từng tài khoản\n"
-        "2. Lọc bài có chứa NEXI/Nexira/DAEP/$NEXI\n"
-        "3. Gửi lại file CSV kết quả\n\n"
-        "⏱ Khoảng 5-10 phút cho 30 tài khoản (do giới hạn API Twitter)\n\n"
-        "*Lệnh khác:*\n"
-        "/myid — Xem Telegram ID của bạn",
-        parse_mode="Markdown",
+        "*/monitor*\n"
+        "Kiểm tra toàn bộ KOL trong danh sách `data/kols.json`, "
+        "lọc bài có từ khoá trong 72h gần nhất → trả file CSV.\n\n"
+        "*/scan \\[keyword\\]*\n"
+        "Tìm kiếm X/Twitter 24h gần nhất, lọc bài view > 1,000. "
+        "Mặc định dùng keywords trong config. "
+        "Ví dụ: `/scan NEXI Nexira`\n\n"
+        "*Gửi username ad\\-hoc*\n"
+        "Gửi danh sách link/username để kiểm tra ngay:\n"
+        "```\nhttps://x.com/user1\n@user2\nuser3\n```\n\n"
+        "⏱ /monitor mất 5\\-10 phút cho 30 KOL \\(giới hạn Twitter API\\)\n\n"
+        "*Lệnh admin:*\n"
+        "/adduser /removeuser /listusers /myid",
+        parse_mode="MarkdownV2",
     )
 
 
@@ -233,6 +233,79 @@ async def cmd_listusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👥 *Danh sách user được phép:*\n" + "\n".join(lines),
         parse_mode="Markdown",
     )
+
+
+KOLS_FILE = Path(__file__).parent / "data" / "kols.json"
+
+
+async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update.effective_user.id):
+        return
+
+    if not KOLS_FILE.exists():
+        await update.message.reply_text(
+            "❌ Chưa có danh sách KOL.\n\nTạo file `data/kols.json` với danh sách KOL cần theo dõi.",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        kols = json.loads(KOLS_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Không đọc được kols.json:\n`{e}`", parse_mode="Markdown")
+        return
+
+    usernames = [k["username"] for k in kols if k.get("username")]
+    if not usernames:
+        await update.message.reply_text("❌ Danh sách KOL trống.")
+        return
+
+    status_msg = await update.message.reply_text(
+        f"⏳ Bắt đầu kiểm tra {len(usernames)} KOL từ danh sách..."
+    )
+
+    progress_lines: list[str] = []
+
+    async def on_progress(msg: str):
+        progress_lines.append(msg)
+        if len(progress_lines) % 3 == 0 or "✗" in msg:
+            try:
+                await status_msg.edit_text(
+                    "⏳ Đang kiểm tra...\n\n" + "\n".join(progress_lines[-15:])
+                )
+            except Exception:
+                pass
+
+    try:
+        _, csv_path, kol_hits, _ = await run_monitor(
+            usernames=usernames,
+            on_progress=on_progress,
+        )
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Lỗi:\n`{e}`", parse_mode="Markdown")
+        return
+
+    if not kol_hits:
+        await status_msg.edit_text(
+            f"✅ Đã kiểm tra {len(usernames)} KOL\n\n"
+            "ℹ️ Không có bài viết nào khớp từ khoá trong 72 giờ gần nhất."
+        )
+        return
+
+    total_views = sum(t.get("views", 0) for t in kol_hits)
+    await status_msg.edit_text(
+        f"✅ Hoàn tất!\n\n"
+        f"📊 {len(kol_hits)} bài viết khớp\n"
+        f"👁 {total_views:,} lượt xem tổng\n\n"
+        "Đang gửi file CSV..."
+    )
+
+    with open(csv_path, "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename=csv_path.name,
+            caption=f"📄 {len(kol_hits)} bài | {total_views:,} views | {len(usernames)} KOL",
+        )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -536,6 +609,7 @@ def main():
     app.add_handler(CommandHandler("adduser", cmd_adduser))
     app.add_handler(CommandHandler("removeuser", cmd_removeuser))
     app.add_handler(CommandHandler("listusers", cmd_listusers))
+    app.add_handler(CommandHandler("monitor", cmd_monitor))
     app.add_handler(CommandHandler("scan", cmd_scan))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

@@ -192,6 +192,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update.effective_user.id):
+        await update.message.reply_text(
+            f"⛔ Bạn chưa được cấp quyền.\n🪪 ID của bạn: <code>{update.effective_user.id}</code>",
+            parse_mode="HTML",
+        )
         return
 
     await update.message.reply_text(
@@ -286,6 +290,7 @@ async def cmd_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "cmd_scan":
         if not is_allowed(query.from_user.id):
+            await query.answer("⛔ Bạn chưa được cấp quyền.", show_alert=True)
             return
         keywords = CONFIG["keywords"]
         kw_str = ", ".join(keywords)
@@ -414,6 +419,10 @@ async def cmd_listusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Hiển thị sub-menu chọn Monitor X hoặc Monitor TG."""
     if not is_allowed(update.effective_user.id):
+        await update.message.reply_text(
+            f"⛔ Bạn chưa được cấp quyền.\n🪪 ID của bạn: <code>{update.effective_user.id}</code>",
+            parse_mode="HTML",
+        )
         return
     await update.message.reply_text(
         "📋 <b>Chọn loại Monitor:</b>",
@@ -423,24 +432,36 @@ async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_monitor_x(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     if not is_allowed(update.effective_user.id):
+        await msg.reply_text(
+            f"⛔ Bạn chưa được cấp quyền.\n🪪 ID của bạn: <code>{update.effective_user.id}</code>",
+            parse_mode="HTML",
+        )
         return
 
-    full_text = update.message.text or ""
+    context.user_data["mode"] = "monitor_x"
+    full_text = (update.message and update.message.text) or ""
     body = re.sub(r"^/monitor_x\S*\s*", "", full_text, count=1).strip()
     usernames = parse_usernames(body)
 
     if not usernames:
-        await update.message.reply_text(
-            "📋 *Cách dùng /monitor:*\n\n"
-            "Gửi lệnh kèm danh sách KOL:\n"
-            "```\n/monitor_x\nhttps://x.com/user1\n@user2\nuser3\n```",
-            parse_mode="Markdown",
+        await msg.reply_text(
+            "🐦 <b>Monitor X/Twitter</b>\n\n"
+            "Gửi danh sách KOL cần kiểm tra (mỗi dòng 1 tài khoản):\n\n"
+            "<code>https://x.com/user1\n"
+            "@user2\n"
+            "user3</code>\n\n"
+            "⚙️ Lọc: 72h gần nhất · Từ khóa dự án\n"
+            "📤 Kết quả: file CSV",
+            parse_mode="HTML",
             reply_markup=_monitor_keyboard(),
         )
         return
 
-    status_msg = await update.message.reply_text(
+    status_msg = await msg.reply_text(
         f"⏳ Bắt đầu kiểm tra {len(usernames)} KOL...\n\n"
         + "\n".join(f"• @{u}" for u in usernames),
     )
@@ -483,19 +504,27 @@ async def cmd_monitor_x(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     with open(csv_path, "rb") as f:
-        await update.message.reply_document(
+        await msg.reply_document(
             document=f,
             filename=csv_path.name,
             caption=f"📄 {len(kol_hits)} bài | {total_views:,} views | {len(usernames)} KOL",
         )
-    await update.message.reply_text("Bạn muốn làm gì tiếp theo?", reply_markup=_main_keyboard())
+    await msg.reply_text("Bạn muốn làm gì tiếp theo?", reply_markup=_main_keyboard())
 
 
 async def cmd_monitor_tg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
     if not is_allowed(update.effective_user.id):
+        await msg.reply_text(
+            f"⛔ Bạn chưa được cấp quyền.\n🪪 ID của bạn: <code>{update.effective_user.id}</code>",
+            parse_mode="HTML",
+        )
         return
 
-    full_text = update.message.text or ""
+    context.user_data["mode"] = "monitor_tg"
+    full_text = (update.message and update.message.text) or ""
     body = re.sub(r"^/monitor_tg\S*\s*", "", full_text, count=1).strip()
 
     # Parse Telegram channel usernames (t.me/xxx, @xxx, hoặc username thuần)
@@ -520,26 +549,117 @@ async def cmd_monitor_tg(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tg_usernames.append(uname)
 
     if not tg_usernames:
-        await update.message.reply_text(
-            "💬 <b>Cách dùng /monitor_tg:</b>\n\n"
-            "<code>/monitor_tg\n"
-            "https://t.me/channel1\n"
-            "@channel2\n"
-            "channel3</code>",
+        await msg.reply_text(
+            "💬 <b>Monitor Telegram</b>\n\n"
+            "Gửi danh sách channel/group cần quét (mỗi dòng 1 link):\n\n"
+            "<code>https://t.me/channel1\n"
+            "https://t.me/group2\n"
+            "@channelname</code>\n\n"
+            "⚙️ Lọc: 72h gần nhất · Từ khóa dự án\n"
+            "📤 Kết quả: file CSV",
             parse_mode="HTML",
             reply_markup=_monitor_keyboard(),
         )
         return
 
-    await update.message.reply_text(
-        "💬 <b>Monitor TG</b>\n\n"
-        f"Tính năng đang phát triển.\n"
-        f"Các channel được ghi nhận:\n"
-        + "\n".join(f"• @{u}" for u in tg_usernames)
-        + "\n\n<i>Vui lòng theo dõi cập nhật sau.</i>",
-        parse_mode="HTML",
-        reply_markup=_main_keyboard(),
+    # Có danh sách channel → chạy quét TG ngay (cùng logic với handle_message)
+    await _run_monitor_tg(update, context, tg_usernames)
+
+
+async def _run_monitor_tg(update: Update, context: ContextTypes.DEFAULT_TYPE, tg_usernames: list[str]) -> None:
+    """Chạy quét Telegram channels và gửi CSV. Dùng chung cho /monitor_tg và handle_message."""
+    msg = update.effective_message
+    if not msg:
+        return
+    context.user_data.pop("mode", None)
+    status_msg = await msg.reply_text(
+        f"⏳ Đang quét {len(tg_usernames)} channel Telegram...\n\n"
+        + "\n".join(f"• @{u}" for u in tg_usernames),
     )
+    try:
+        from monitors.tg_fetcher import fetch_tg_channels
+        messages, errors = await fetch_tg_channels(
+            tg_usernames,
+            keywords=CONFIG["keywords"],
+            hours=72,
+        )
+    except RuntimeError as e:
+        await status_msg.edit_text(
+            f"❌ Lỗi cấu hình Monitor TG:\n<code>{e}</code>",
+            parse_mode="HTML",
+            reply_markup=_main_keyboard(),
+        )
+        return
+    except Exception as e:
+        await status_msg.edit_text(
+            f"❌ Lỗi khi quét Telegram:\n<code>{e}</code>",
+            parse_mode="HTML",
+            reply_markup=_main_keyboard(),
+        )
+        return
+
+    if not messages:
+        err_note = ("\n\n⚠️ Lỗi channel:\n" + "\n".join(f"• {e}" for e in errors[:3])) if errors else ""
+        await status_msg.edit_text(
+            f"✅ Đã quét {len(tg_usernames)} channel\n\n"
+            f"ℹ️ Không có tin nhắn nào khớp từ khoá trong 72 giờ gần nhất.{err_note}",
+            reply_markup=_main_keyboard(),
+        )
+        return
+
+    import csv
+    import tempfile
+    today = datetime.now().strftime("%Y-%m-%d")
+    csv_path = os.path.join(tempfile.gettempdir(), f"tg_monitor_{today}.csv")
+    fieldnames = [
+        "stt", "ngay_dang", "username", "ten_kol", "followers",
+        "luot_xem", "likes", "forwards", "replies",
+        "noi_dung_150ky", "link_bai_viet", "tu_khoa_khop",
+    ]
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for i, m in enumerate(messages, 1):
+            try:
+                dt = datetime.strptime(m["created_at"], "%a %b %d %H:%M:%S %z %Y")
+                date_str = dt.strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                date_str = m.get("created_at", "")
+            writer.writerow({
+                "stt": i,
+                "ngay_dang": date_str,
+                "username": m["username"],
+                "ten_kol": m["name"],
+                "followers": m["followers"],
+                "luot_xem": m["views"],
+                "likes": m["likes"],
+                "forwards": m["forwards"],
+                "replies": m["replies"],
+                "noi_dung_150ky": m["text"],
+                "link_bai_viet": m["url"],
+                "tu_khoa_khop": m["matched_keywords"],
+            })
+
+    total_views = sum(m.get("views", 0) for m in messages)
+    err_note = (f"\n⚠️ {len(errors)} channel lỗi" if errors else "")
+    await status_msg.edit_text(
+        f"✅ Hoàn tất Monitor TG!\n\n"
+        f"💬 {len(messages)} tin nhắn khớp\n"
+        f"👁 {total_views:,} lượt xem tổng\n"
+        f"📡 {len(tg_usernames)} channel{err_note}\n\n"
+        "Đang gửi file CSV..."
+    )
+    with open(csv_path, "rb") as f:
+        await msg.reply_document(
+            document=f,
+            filename=os.path.basename(csv_path),
+            caption=f"💬 {len(messages)} tin | {total_views:,} views | {len(tg_usernames)} channel",
+        )
+    try:
+        os.remove(csv_path)
+    except Exception:
+        pass
+    await msg.reply_text("Bạn muốn làm gì tiếp theo?", reply_markup=_main_keyboard())
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -588,95 +708,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        context.user_data.pop("mode", None)
-        status_msg = await update.message.reply_text(
-            f"⏳ Đang quét {len(tg_usernames)} channel Telegram...\n\n"
-            + "\n".join(f"• @{u}" for u in tg_usernames),
-        )
-
-        try:
-            from monitors.tg_fetcher import fetch_tg_channels
-            messages, errors = await fetch_tg_channels(
-                tg_usernames,
-                keywords=CONFIG["keywords"],
-                hours=72,
-            )
-        except RuntimeError as e:
-            await status_msg.edit_text(
-                f"❌ Lỗi cấu hình Monitor TG:\n<code>{e}</code>",
-                parse_mode="HTML",
-                reply_markup=_main_keyboard(),
-            )
-            return
-        except Exception as e:
-            await status_msg.edit_text(
-                f"❌ Lỗi khi quét Telegram:\n<code>{e}</code>",
-                parse_mode="HTML",
-                reply_markup=_main_keyboard(),
-            )
-            return
-
-        if not messages:
-            err_note = ("\n\n⚠️ Lỗi channel:\n" + "\n".join(f"• {e}" for e in errors[:3])) if errors else ""
-            await status_msg.edit_text(
-                f"✅ Đã quét {len(tg_usernames)} channel\n\n"
-                f"ℹ️ Không có tin nhắn nào khớp từ khoá trong 72 giờ gần nhất.{err_note}",
-                reply_markup=_main_keyboard(),
-            )
-            return
-
-        # Tạo CSV
-        import csv
-        import tempfile
-        today = datetime.now().strftime("%Y-%m-%d")
-        csv_path = os.path.join(tempfile.gettempdir(), f"tg_monitor_{today}.csv")
-        fieldnames = [
-            "stt", "ngay_dang", "username", "ten_kol", "followers",
-            "luot_xem", "likes", "forwards", "replies",
-            "noi_dung_150ky", "link_bai_viet", "tu_khoa_khop",
-        ]
-        with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            for i, m in enumerate(messages, 1):
-                try:
-                    dt = datetime.strptime(m["created_at"], "%a %b %d %H:%M:%S %z %Y")
-                    date_str = dt.strftime("%d/%m/%Y %H:%M")
-                except Exception:
-                    date_str = m.get("created_at", "")
-                writer.writerow({
-                    "stt": i,
-                    "ngay_dang": date_str,
-                    "username": m["username"],
-                    "ten_kol": m["name"],
-                    "followers": m["followers"],
-                    "luot_xem": m["views"],
-                    "likes": m["likes"],
-                    "forwards": m["forwards"],
-                    "replies": m["replies"],
-                    "noi_dung_150ky": m["text"],
-                    "link_bai_viet": m["url"],
-                    "tu_khoa_khop": m["matched_keywords"],
-                })
-
-        total_views = sum(m.get("views", 0) for m in messages)
-        err_note = (f"\n⚠️ {len(errors)} channel lỗi" if errors else "")
-        await status_msg.edit_text(
-            f"✅ Hoàn tất Monitor TG!\n\n"
-            f"💬 {len(messages)} tin nhắn khớp\n"
-            f"👁 {total_views:,} lượt xem tổng\n"
-            f"📡 {len(tg_usernames)} channel{err_note}\n\n"
-            "Đang gửi file CSV..."
-        )
-
-        with open(csv_path, "rb") as f:
-            await update.message.reply_document(
-                document=f,
-                filename=os.path.basename(csv_path),
-                caption=f"💬 {len(messages)} tin | {total_views:,} views | {len(tg_usernames)} channel",
-            )
-        os.remove(csv_path)
-        await update.message.reply_text("Bạn muốn làm gì tiếp theo?", reply_markup=_main_keyboard())
+        await _run_monitor_tg(update, context, tg_usernames)
         return
 
     # ── Mode: Monitor X (default) ─────────────────────────────────────────────
@@ -940,6 +972,10 @@ async def _send_scan_results(send_message_fn, send_document_fn, tweets: list[dic
 
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update.effective_user.id):
+        await update.message.reply_text(
+            f"⛔ Bạn chưa được cấp quyền.\n🪪 ID của bạn: <code>{update.effective_user.id}</code>",
+            parse_mode="HTML",
+        )
         return
 
     keywords = list(context.args) if context.args else CONFIG["keywords"]
@@ -1034,9 +1070,22 @@ async def _post_init(application: Application) -> None:
     logger.info("Scheduler đã khởi động (auto scan lúc 09:00 Asia/Ho_Chi_Minh)")
 
 
+async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Bắt mọi exception trong handler để log và trả lời user, tránh bot im lặng."""
+    logger.exception("Exception trong handler (update=%s)", update)
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "❌ Đã xảy ra lỗi. Vui lòng thử lại sau hoặc liên hệ admin.",
+            )
+        except Exception:
+            pass
+
+
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).post_init(_post_init).build()
 
+    app.add_error_handler(_error_handler)
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("myid", cmd_myid))

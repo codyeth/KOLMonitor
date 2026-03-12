@@ -589,15 +589,94 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         context.user_data.pop("mode", None)
-        await update.message.reply_text(
-            "💬 <b>Monitor TG</b>\n\n"
-            f"Tính năng đang phát triển.\n"
-            f"Các channel được ghi nhận:\n"
-            + "\n".join(f"• @{u}" for u in tg_usernames)
-            + "\n\n<i>Vui lòng theo dõi cập nhật sau.</i>",
-            parse_mode="HTML",
-            reply_markup=_main_keyboard(),
+        status_msg = await update.message.reply_text(
+            f"⏳ Đang quét {len(tg_usernames)} channel Telegram...\n\n"
+            + "\n".join(f"• @{u}" for u in tg_usernames),
         )
+
+        try:
+            from monitors.tg_fetcher import fetch_tg_channels
+            messages, errors = await fetch_tg_channels(
+                tg_usernames,
+                keywords=CONFIG["keywords"],
+                hours=24,
+            )
+        except RuntimeError as e:
+            await status_msg.edit_text(
+                f"❌ Lỗi cấu hình Monitor TG:\n<code>{e}</code>",
+                parse_mode="HTML",
+                reply_markup=_main_keyboard(),
+            )
+            return
+        except Exception as e:
+            await status_msg.edit_text(
+                f"❌ Lỗi khi quét Telegram:\n<code>{e}</code>",
+                parse_mode="HTML",
+                reply_markup=_main_keyboard(),
+            )
+            return
+
+        if not messages:
+            err_note = ("\n\n⚠️ Lỗi channel:\n" + "\n".join(f"• {e}" for e in errors[:3])) if errors else ""
+            await status_msg.edit_text(
+                f"✅ Đã quét {len(tg_usernames)} channel\n\n"
+                f"ℹ️ Không có tin nhắn nào khớp từ khoá trong 24 giờ gần nhất.{err_note}",
+                reply_markup=_main_keyboard(),
+            )
+            return
+
+        # Tạo CSV
+        import csv
+        import tempfile
+        today = datetime.now().strftime("%Y-%m-%d")
+        csv_path = os.path.join(tempfile.gettempdir(), f"tg_monitor_{today}.csv")
+        fieldnames = [
+            "stt", "ngay_dang", "username", "ten_kol", "followers",
+            "luot_xem", "likes", "forwards", "replies",
+            "noi_dung_150ky", "link_bai_viet", "tu_khoa_khop",
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for i, m in enumerate(messages, 1):
+                try:
+                    dt = datetime.strptime(m["created_at"], "%a %b %d %H:%M:%S %z %Y")
+                    date_str = dt.strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    date_str = m.get("created_at", "")
+                writer.writerow({
+                    "stt": i,
+                    "ngay_dang": date_str,
+                    "username": m["username"],
+                    "ten_kol": m["name"],
+                    "followers": m["followers"],
+                    "luot_xem": m["views"],
+                    "likes": m["likes"],
+                    "forwards": m["forwards"],
+                    "replies": m["replies"],
+                    "noi_dung_150ky": m["text"],
+                    "link_bai_viet": m["url"],
+                    "tu_khoa_khop": m["matched_keywords"],
+                })
+
+        total_views = sum(m.get("views", 0) for m in messages)
+        err_note = (f"\n⚠️ {len(errors)} channel lỗi" if errors else "")
+        await status_msg.edit_text(
+            f"✅ Hoàn tất Monitor TG!\n\n"
+            f"💬 {len(messages)} tin nhắn khớp\n"
+            f"👁 {total_views:,} lượt xem tổng\n"
+            f"📡 {len(tg_usernames)} channel{err_note}\n\n"
+            "Đang gửi file CSV..."
+        )
+
+        with open(csv_path, "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                filename=os.path.basename(csv_path),
+                caption=f"💬 {len(messages)} tin | {total_views:,} views | {len(tg_usernames)} channel",
+            )
+        os.remove(csv_path)
+        await update.message.reply_text("Bạn muốn làm gì tiếp theo?", reply_markup=_main_keyboard())
         return
 
     # ── Mode: Monitor X (default) ─────────────────────────────────────────────

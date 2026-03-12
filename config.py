@@ -51,4 +51,7 @@ if not TELEGRAM_TOKEN:
     )
 
 # Danh sách user ID được phép dùng bot (thêm bằng /adduser hoặc sửa trực tiếp)
-TELEGRAM_ALLOWED_IDS: list[int] = []
+_allowed = os.getenv("TELEGRAM_ALLOWED_IDS", "")
+TELEGRAM_ALLOWED_IDS: list[int] = [
+    int(x.strip()) for x in _allowed.split(",") if x.strip()
+]

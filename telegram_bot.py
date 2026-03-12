@@ -833,6 +833,7 @@ async def auto_scan_job(bot):
 
 async def _post_init(application: Application) -> None:
     await application.bot.set_my_commands([
+        BotCommand("start", "Bắt đầu / xem menu chính"),
         BotCommand("monitor_x", "Kiểm tra KOL X/Twitter theo danh sách"),
         BotCommand("monitor_tg", "Kiểm tra KOL Telegram theo danh sách"),
         BotCommand("scan", "Tìm KOL mới đang đăng về dự án (24h, view >1k)"),

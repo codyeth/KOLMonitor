@@ -351,6 +351,14 @@ async def cmd_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=_main_keyboard(),
         )
 
+    else:
+        # Button cũ (từ trước khi redeploy) — hướng dẫn dùng lại /start
+        await query.message.reply_text(
+            "⚠️ Button này đã hết hạn do bot vừa cập nhật.\n\n"
+            "Gõ /start để lấy menu mới.",
+            reply_markup=_main_keyboard(),
+        )
+
 
 async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id

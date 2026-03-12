@@ -1,0 +1,20 @@
+[
+  {
+    "username": "CryptoInfluencer1",
+    "name": "Crypto Influencer 1",
+    "tags": ["gaming", "web3", "nft"],
+    "notes": "Active Web3 gaming KOL, 50K followers"
+  },
+  {
+    "username": "BlockchainGamer",
+    "name": "Blockchain Gamer",
+    "tags": ["gaming", "defi"],
+    "notes": "Focus on play-to-earn and GameFi"
+  },
+  {
+    "username": "Web3NewsDaily",
+    "name": "Web3 News Daily",
+    "tags": ["news", "web3"],
+    "notes": "Daily crypto/web3 news aggregator"
+  }
+]

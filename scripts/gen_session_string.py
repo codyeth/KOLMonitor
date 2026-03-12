@@ -29,11 +29,11 @@ async def main():
         print("   Lấy tại: https://my.telegram.org/apps")
         return
 
-    print("📱 Đăng nhập Telegram để tạo session string...")
-    print("   (Sẽ gửi OTP về số điện thoại của bạn)\n")
+    phone = os.getenv("TELEGRAM_PHONE") or input("📱 Nhập số điện thoại (VD: +84912345678): ").strip()
+    print(f"\n📲 Đang gửi OTP đến {phone}...\n")
 
     client = TelegramClient(StringSession(), int(api_id), api_hash)
-    await client.start()
+    await client.start(phone=phone)
 
     session_string = client.session.save()
     me = await client.get_me()

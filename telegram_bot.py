@@ -142,6 +142,16 @@ def parse_usernames(text: str) -> list[str]:
     return usernames
 
 
+# ── Helper ───────────────────────────────────────────────────────────────────
+
+def _main_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("📋 Monitor", callback_data="help_monitor"),
+        InlineKeyboardButton("🔍 Scan", callback_data="help_scan"),
+        InlineKeyboardButton("❓ Help", callback_data="help_all"),
+    ]])
+
+
 # ── Handlers ─────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -366,7 +376,8 @@ async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not kol_hits:
         await status_msg.edit_text(
             f"✅ Đã kiểm tra {len(usernames)} KOL\n\n"
-            "ℹ️ Không có bài viết nào khớp từ khoá trong 72 giờ gần nhất."
+            "ℹ️ Không có bài viết nào khớp từ khoá trong 72 giờ gần nhất.",
+            reply_markup=_main_keyboard(),
         )
         return
 
@@ -384,6 +395,7 @@ async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filename=csv_path.name,
             caption=f"📄 {len(kol_hits)} bài | {total_views:,} views | {len(usernames)} KOL",
         )
+    await update.message.reply_text("Bạn muốn làm gì tiếp theo?", reply_markup=_main_keyboard())
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -439,7 +451,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not kol_hits:
         await status_msg.edit_text(
             f"✅ Đã kiểm tra {len(usernames)} KOL\n\n"
-            "ℹ️ Không có bài viết nào khớp từ khoá trong 72 giờ gần nhất."
+            "ℹ️ Không có bài viết nào khớp từ khoá trong 72 giờ gần nhất.",
+            reply_markup=_main_keyboard(),
         )
         return
 
@@ -457,6 +470,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filename=csv_path.name,
             caption=f"📄 {len(kol_hits)} bài | {total_views:,} views | {len(usernames)} KOL",
         )
+    await update.message.reply_text("Bạn muốn làm gì tiếp theo?", reply_markup=_main_keyboard())
 
 
 # ── Scan KOL theo từ khóa ────────────────────────────────────────────────────
@@ -690,6 +704,7 @@ async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_document(document=f, filename=filename, caption=caption)
 
     await _send_scan_results(send_msg, send_doc, tweets, keywords)
+    await update.message.reply_text("Bạn muốn làm gì tiếp theo?", reply_markup=_main_keyboard())
 
 
 async def auto_scan_job(bot):

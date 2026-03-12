@@ -670,6 +670,14 @@ async def _post_init(application: Application) -> None:
         BotCommand("scan", "Tìm KOL mới đang đăng về dự án (24h, view >1k)"),
         BotCommand("help", "Hướng dẫn sử dụng"),
     ])
+    await application.bot.set_my_description(
+        "👋 Chào mừng đến với KOL Monitor Bot!\n\n"
+        "Bot giúp bạn theo dõi các KOL trên X/Twitter đang đăng về dự án NEXI/Nexira.\n\n"
+        "Nhấn Start để bắt đầu 👇"
+    )
+    await application.bot.set_my_short_description(
+        "Theo dõi KOL X/Twitter đang đăng về dự án NEXI/Nexira"
+    )
 
     scheduler = AsyncIOScheduler(timezone="Asia/Ho_Chi_Minh")
     scheduler.add_job(

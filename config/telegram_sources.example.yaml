@@ -1,0 +1,23 @@
+# Telegram Monitor Sources
+# Thêm username của channel/group public vào đây
+# type: "channel" hoặc "group"
+# keywords: danh sách từ khoá cần lọc (null = lấy tất cả tin nhắn)
+
+sources:
+  - id: "example_crypto_channel"
+    username: "example_channel"
+    type: "channel"
+    keywords:
+      - "NEXI"
+      - "Nexira"
+      - "DAEP"
+      - "$NEXI"
+    priority: "high"
+
+  - id: "example_vn_group"
+    username: "example_group"
+    type: "group"
+    keywords:
+      - "NEXI"
+      - "$NEXI"
+    priority: "medium"

@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 .env
 secrets.py
+*.session
+logs/
+output/telegram/
